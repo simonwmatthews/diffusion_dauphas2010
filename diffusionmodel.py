@@ -34,8 +34,6 @@ import sympy as sym
 R = 8.314472
 
 # %%
-
-# %%
 cooling = 'linear' # linear or exponential
 if cooling == 'linear':
     q = 1
@@ -53,129 +51,127 @@ XMg1 = 0.89 # Surface Mg concentration, identical for 24 and 26
 XFe0 = 0.06 # Initial Fe concentration, identical for 54 and 56
 XMg0 = 0.94 # Initial Mg concentration, identical for 24 and 26
 
+
 # %% [markdown]
 # ### Definition of functions
 
 # %%
-# def T(t):
-#     if cooling == 'linear':
-#         if T0 - t * c / (3600 * 24) > 298.15:
-#             return T0 - t * c / (3600 * 24) > 298.15
-#         else:
-#             return 298.15
-#     else:
-#         return 298.15 + (T0 - 298.15) * np.exp(- t * c / 3600 * 24)
+def T(t):
+    if cooling == 'linear':
+        if T0 - t * c / (3600 * 24) > 298.15:
+            return T0 - t * c / (3600 * 24) > 298.15
+        else:
+            return 298.15
+    else:
+        return 298.15 + (T0 - 298.15) * np.exp(- t * c / 3600 * 24)
+
 
 # %%
-# t, T0, c, q = sym.symbols('t T0 c q')
-t = sym.symbols('t')
+def fO2(T, P):
+    """
+    oxygen fugacity in Pa with T in K and P in Pa; Huebner & Sato 1970; Chou 1987; Herd 2008
+    """
+    return 101325 * 10**delta_O2 * 10**(9.36 - 24930 / T + 0.046 * (P / 1e5 - 1) / T)
 
-
-Tlin = sym.Piecewise(
-       (T0 - t * c / (3600 * 24), T0 - t * c / (3600 * 24) > 298.15),
-       (298, T0 - t * c / (3600 * 24) <= 298.15)
-)
-
-Texp = 298.15 + (T0 - 298.15) * sym.exp(- t * c / 3600 * 24)
-
-T = sym.Piecewise(
-    (Tlin, q>=1),
-    (Texp, q<1)
-)
-
-T
 
 # %%
-# def fO2(T, P):
-#     """
-#     oxygen fugacity in Pa with T in K and P in Pa; Huebner & Sato 1970; Chou 1987; Herd 2008
-#     """
-#     return 101325 * 10**delta_O2 * 10**(9.36 - 24930 / T + 0.046 * (P / 1e5 - 1) / T)
+def d(T, P, X, f):
+    """
+    Fe-Mg diffusion coefficient in olivine in m2s-1, T in K, P pressure in Pa, 
+    f absolute oxygen fugacity in Pa, X mole fraction of the fayalite component
+    Dohmen & Chakraborty 2007
+    """
+    if f > 10**-10:
+        return (
+            10**(-9.21 - (201000 + (P-1e5)*7e-6)/(2.303*R*T) 
+                 + 1/6 * np.log10(f/1e-7) + 3*(X-0.1))
+        )
+    else:
+        return (
+            10**(-8.91 - (220000 + (P-1e5)*7e-6) / (2.303*R*T) + 3 * (X-0.1))
+        )
 
-# %%
-fO2 = 101325 * 10**delta_O2 * 10**(9.36 - 24930 / T + 0.046 * (P / 1e5 - 1) / T)
-
-fO2
-
-# %%
-# def d(T, P, X, f):
-#     """
-#     Fe-Mg diffusion coefficient in olivine in m2s-1, T in K, P pressure in Pa, 
-#     f absolute oxygen fugacity in Pa, X mole fraction of the fayalite component
-#     Dohmen & Chakraborty 2007
-#     """
-#     if f > 10**-10:
-#         return (
-#             10**(-9.21 - (201000 + (P-1e5)*7e-6)/(2.303*R*T) 
-#                  + 1/6 * np.log10(f/1e-7) + 3*(X-0.1))
-#         )
-#     else:
-#         return (
-#             10**(-8.91 - (220000 + (P-1e5)*7e-6) / (2.303*R*T) + 3 * (X-0.1))
-#         )
-
-# %%
-r = sym.symbols('r')
-X = sym.symbols('X')
-
-
-# X = sym.Function('X')(t, r)
-
-d = sym.Piecewise(
-    (10**(-9.21 - (201000 + (P-1e5)*7e-6) / (2.303*R*T) + 1/6 * sym.log(fO2/1e-7, 10) + 3*(X-0.1)), fO2 > 10**-10),
-    (10**(-8.91 - (220000 + (P-1e5)*7e-6) / (2.303*R*T) + 3 * (X-0.1)), fO2 <= 10**-10)
-)
-
-d
 
 # %% [markdown]
 # ### Calculation of diffusion and cooling timescales
 
 # %%
-# # Diffusion timescale in seconds:
-# tau = a**2 / d(T0, P, XFe0, fO2(T0,P))
+# Diffusion timescale in seconds:
+tau = a**2 / d(T0, P, XFe0, fO2(T0,P))
 
-# if cooling == 'linear':
-#     initial_cooling_rate = c
-# else:
-#     initial_cooling_rate = (T0 - 298.15) * c
-# print("initial cooling rate for " + cooling + " model: {:.4f} K.d-1".format(initial_cooling_rate))
-
-# if cooling == 'linear':
-#     denominator = c
-# else:
-#     denominator = (T0 - 298.15) * c
-# print("cooling timescale: {:.4f} d".format((T0 - 1173.15) / denominator))
-
-# print("diffusion timescale: {:.4f} d".format(tau / (3600 * 24)))
-
-# %%
-tau = a**2 / d
-tau
-
-# %%
-float(tau.subs({'T':T0, 'X':XFe0, 't':0}))
-
-# %%
-if q == 1:
+if cooling == 'linear':
     initial_cooling_rate = c
 else:
     initial_cooling_rate = (T0 - 298.15) * c
 print("initial cooling rate for " + cooling + " model: {:.4f} K.d-1".format(initial_cooling_rate))
 
-if q == 1:
+if cooling == 'linear':
     denominator = c
 else:
     denominator = (T0 - 298.15) * c
 print("cooling timescale: {:.4f} d".format((T0 - 1173.15) / denominator))
 
-print("diffusion timescale: {:.4f} d".format(float(tau.subs({'T':T0, 'X':XFe0, 't':0})) / (3600 * 24)))
+print("diffusion timescale: {:.4f} d".format(tau / (3600 * 24)))
 
-# %%
-X = sym.Function('X')(t,r)
 
-d = d.subs({'X':sym.Function('X')(t,r)})
-d
+# %% [markdown]
+# ## Solving the PDE
+#
+# Matlab has the ability to solve the diffusion equation. Unfortunately, neither scipy nor numpy have this ability. This means we must code up an algorithm to solve the equation. Here follows some notes that I produced in the process of working out how to do this.
+
+# %% [markdown]
+# The equation to be solved:
+#
+# $ \frac{\partial X(t, r)}{\partial t}  = \frac{1}{r^2} \frac{\partial}{\partial r} \left[ r^2 \, \, \alpha \, \, D(T, P, X, fO_2(T, P)) \, \, \frac{\partial X(t, r)}{\partial r} \right]$
+#
+# With boundary conditions:
+#
+# $X(0, r) = X_{Fe0}$
+#
+# $X(t, a) = \frac{1}{1+t} (X_{Fe0} - X_{Fe1} + X_{Fe1}) $
+#
+# $\frac{\partial X(t, r=0)}{\partial r} = 0 $
+
+# %% [markdown]
+# The equations required for Crank Nicholson scheme:
+#
+# If $D$ were constant:
+#
+# $ \frac{u_j^{n+1} - u_j^n}{\Delta t} = \frac{D}{2} \left[ \frac{\left( u^{n+1}_{j+1} - 2u_j^{n+1} + u^{n+1}_{j-1} \right) + \left(u^n_{j+1} - 2 u^n_j + u^n_{j-1} \right)}{\left(\Delta x \right)^2} \right]$ 
+#
+# where $n$ is the time step and $j$ is the spatial step.
+
+# %% [markdown]
+# Incorporating the variation of $D$ with $r$:
+#
+# $ \frac{u_j^{n+1} - u_j^n}{\Delta t} = \frac{1}{2} \left[ \frac{D_{j+1/2} \left[ \left( u^{n+1}_{j+1} - u_j^{n+1} \right) + \left( u^{n}_{j+1} - u_j^{n} \right) \right] - D_{j-1/2} \left[ \left( u_j^{n+1} - u^{n+1}_{j-1} \right) + \left( u_j^{n} - u^{n}_{j-1} \right) \right]}{\left(\Delta x \right)^2} \right]$ 
+#
+# where,
+#
+# $ D_{j+1/2} = \frac{1}{2} \left[ D(u^{n}_{j+1}) + D(u^n_j) \right] $
+
+# %% [markdown]
+# Maybe a time dependence for $D$ can be incorporated:
+#
+# $ \frac{u_j^{n+1} - u_j^n}{\Delta t} = \frac{1}{2} \left[ \frac{D_{j+1/2}^{n+1} \left( u^{n+1}_{j+1} - u_j^{n+1} \right) + D_{j+1/2}^{n} \left( u^{n}_{j+1} - u_j^{n} \right) - D_{j-1/2}^{n+1} \left( u_j^{n+1} - u^{n+1}_{j-1} \right) - D_{j-1/2}^{n} \left( u_j^{n} - u^{n}_{j-1} \right)}{\left(\Delta x \right)^2} \right]$ 
+#
+# where,
+#
+# $D_{j+1/2}^n = \frac{1}{2} \left[ D(u^{n}_{j+1}) + D(u^n_j) \right] ; \, \, \, D_{j-1/2}^n = \frac{1}{2} \left[ D(u^{n}_{j}) + D(u^n_{j-1}) \right]$
+#
+#
+# $D_{j+1/2}^{n+1} = \frac{1}{2} \left[ D(u^{n+1}_{j+1}) + D(u^{n+1}_j) \right] ; \, \, \, D_{j-1/2}^{n+1} = \frac{1}{2} \left[ D(u^{n+1}_{j}) + D(u^{n+1}_{j-1}) \right] $
+#
+# $D(u^{n+1}_{j}) = D(u^n_j) + (u_j^{n+1} - u_j^n) \, \, \frac{\partial D}{\partial u} \Bigr|_{j,n} $
+#
+# $D(u^{n+1}_{j+1}) = D(u^n_{j+1}) + (u_{j+1}^{n+1} - u_{j+1}^n) \, \, \frac{\partial D}{\partial u} \Bigr|_{j+1,n}$
+#
+# $ D(u^{n+1}_{j-1}) = D(u^n_{j-1}) + (u_{j-1}^{n+1} - u_j^n) \, \, \frac{\partial D}{\partial u} \Bigr|_{j-1,n} $
+
+# %% [markdown]
+# This needs to be rearranged such that it has the format of a set of simultaneous linear equations at each time step $n$, solving for the step $n+1$:
+#
+#
 
 # %% [markdown]
 # `f4`, `f6`, `m4`, and `m6` is the solution to the diffusion pde for $^{54}Fe$, $^{56}Fe$, and $^{26}Mg$ respectively.
@@ -186,25 +182,69 @@ d
 #
 # The D[...] operator is a partial derivative.
 
-# %%
-alpha = sym.symbols('alpha')
-dXdt = 1 / (r + 0.000001e-6) * sym.diff(r**2 * alpha * d * sym.diff(X, r), r)
-
-dXdt
+# %% [markdown]
+#
 
 # %%
-eq = sym.Eq(sym.diff(X,t), dXdt)
+def construct_linalg_problem(u_prev, T_prev, x_boundary, kappa, Fe=True):
+    """
+    Construct the matrices describing the linear algebra problem
+    for each time step.
 
-# %%
-# sym.pdsolve?
+    Parameters
+    ----------
+    u_prev : numpy.ndarray
+        The concentrations from the previous step
+    T_prev : float
+        The temperature of the previous step
+    x_boundary : float
+        The composition at the boundary of the domain
+    kappa : float
+        The constant $\frac{\Delta t}{2(\Delta x)^2} where t is time
+        and x is distance
+    Fe : bool, default: True
+        Fe or Mg?
+    """
+    usteps = np.shape(u_prev)[0]
 
-# %%
-# sym.pdsolve?
+    # LHS
+    A = np.zeros([usteps]*2)
 
-# %%
-sym.pdsolve(eq, X(t,r), ics={X(0,r): XFe0, X(t,a): (1/(1+t)*(XFe0-XFe1)+XFe1), X(t,r).diff(r).subs({r:0}):0})
+    fo2_prev = fO2(T_prev, P)
+    D_prev = np.zeros(np.shape(u))
+    for j in range(usteps):
+        if Fe:
+            D_prev[j] = d(T_prev, P, u, fo2_prev)
+        else:
+            D_prev[j] = d(T_prev, P, 1.0 - u, fo2_prev)
 
-# %%
-X(0,0)
+    for j in range(usteps):
+        if j > 0:
+            A[j, j-1] = kappa * D_prev[j-1]
+        A[j,j] = 2 * kappa * D_prev[j]
+        if j < usteps - 1:
+            A[j, j+1] = kappa * D_prev[j+1] - 1
+    
 
-# %%
+    # RHS
+    B = np.zeros(np.shape(u_prev))
+
+    z = D_prev / (3 * np.log(10))
+
+    for j in range(usteps):
+        # for j=0, j+1 == j-1 by symmetry
+        if j == 0:
+            B[j] = (kappa * (2 * z[j+1] - 2 * z[j])
+                    + 2 * (u_prev[j+1] * kappa * (- D_prev[j+1] + 0.5 * (D_prev[j] + D_prev[j+1])))
+                    + u_prev[j] * (-2 * kappa * D_prev[j] - kappa * (D_prev[j] _ D_prev[j+1]) + 1)
+                    )
+        # for j==jmax, j+1 is outside domain
+        # Set u[j+1] to composition outside, assume D is equal to edge of domain
+        elif j == usteps - 1:
+            B[j] = (kappa * (-z[j] + z[j-2])
+                    + x_boundary * kappa * (- D_prev[j] + D_prev[j]) # THIS SIMPLIFIES TO ZERO SO THERE IS NO DEPENDENCE ON CONC OUTSIDE THE DOMAIN.
+
+                    )
+
+
+
