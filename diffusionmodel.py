@@ -221,7 +221,7 @@ def construct_linalg_problem(u_prev, T_prev, x_boundary, kappa, Fe=True):
     for j in range(usteps):
         if j == 0:
             A[j,j] = - u_prev[j] * (1 + kappa * (0.5 * (D_prev[j] + D_prev[j+1]) + 0.5 * (D_prev[j] + D_prev[j+1])))
-            A[j, j+1] = kappa * 0.5 * (D_prev[j] + D_prev[j+1])
+            A[j, j+1] = kappa * 0.5 * (D_prev[j] + D_prev[j+1])*2
         elif j == usteps - 1:
             A[j, j-1] = kappa * 0.5 * (D_prev[j] + D_prev[j-1])
             A[j, j] = u_prev[j] * (1 + kappa * (D_prev[j]  + 0.5 * (D_prev[j] + D_prev[j-1])))
@@ -296,9 +296,6 @@ u = np.linalg.solve(A, B)
 
 # %%
 u
-
-# %%
-np.dot(A, u) - B
 
 # %%
 A
