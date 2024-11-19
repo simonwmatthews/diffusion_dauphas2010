@@ -208,43 +208,99 @@ def construct_linalg_problem(u_prev, T_prev, x_boundary, kappa, Fe=True):
     usteps = np.shape(u_prev)[0]
 
     # LHS
-    A = np.zeros([usteps]*2)
+    A = np.zeros([usteps, usteps])
 
     fo2_prev = fO2(T_prev, P)
-    D_prev = np.zeros(np.shape(u))
+    D_prev = np.zeros(np.shape(u_prev))
     for j in range(usteps):
         if Fe:
-            D_prev[j] = d(T_prev, P, u, fo2_prev)
+            D_prev[j] = d(T_prev, P, u_prev[j], fo2_prev)
         else:
-            D_prev[j] = d(T_prev, P, 1.0 - u, fo2_prev)
+            D_prev[j] = d(T_prev, P, 1.0 - u_prev[j], fo2_prev)
 
     for j in range(usteps):
-        if j > 0:
-            A[j, j-1] = kappa * D_prev[j-1]
-        A[j,j] = 2 * kappa * D_prev[j]
-        if j < usteps - 1:
-            A[j, j+1] = kappa * D_prev[j+1] - 1
+        if j == 0:
+            A[j,j] = - u_prev[j] * (1 + kappa * (0.5 * (D_prev[j] + D_prev[j+1]) + 0.5 * (D_prev[j] + D_prev[j+1])))
+            A[j, j+1] = kappa * 0.5 * (D_prev[j] + D_prev[j+1])
+        elif j == usteps - 1:
+            A[j, j-1] = kappa * 0.5 * (D_prev[j] + D_prev[j-1])
+            A[j, j] = u_prev[j] * (1 + kappa * (D_prev[j]  + 0.5 * (D_prev[j] + D_prev[j-1])))
+        else:
+            A[j, j-1] = kappa * 0.5 * (D_prev[j] + D_prev[j-1])
+            A[j,j] = - u_prev[j] * (1 + kappa * (0.5 * (D_prev[j] + D_prev[j+1]) + 0.5 * (D_prev[j] + D_prev[j-1])))
+            A[j, j+1] = kappa * 0.5 * (D_prev[j] + D_prev[j+1])
+
+
+
+        # if j > 0:
+        #     A[j, j-1] = kappa * (D_prev[j-1] + D_prev[j]) * 0.5
+        #     if j < usteps -1:
+        #         A[j,j] = - (1 + kappa * (0.5 * (D_prev[j+1] + D_prev[j]) + 0.5 * (D_prev[j-1] + D_prev[j])))
+        # if j == 0:
+        #     A[j,j] = - (1 + kappa * (D_prev[j+1] + D_prev[j]))
+        # if j < usteps - 1:
+        #     A[j, j+1] = kappa * 0.5 * (D_prev[j+1] + D_prev[j])
+        # if j == usteps -1:
+        #     A[j,j] = - (1 + kappa * 2 * D_prev[j])
+
     
 
     # RHS
     B = np.zeros(np.shape(u_prev))
 
-    z = D_prev / (3 * np.log(10))
-
     for j in range(usteps):
         # for j=0, j+1 == j-1 by symmetry
         if j == 0:
-            B[j] = (kappa * (2 * z[j+1] - 2 * z[j])
-                    + 2 * (u_prev[j+1] * kappa * (- D_prev[j+1] + 0.5 * (D_prev[j] + D_prev[j+1])))
-                    + u_prev[j] * (-2 * kappa * D_prev[j] - kappa * (D_prev[j] _ D_prev[j+1]) + 1)
-                    )
+            B[j] = (
+                - u_prev[j+1] * kappa * 0.5 * (D_prev[j+1] + D_prev[j])
+                - u_prev[j] * (1 - kappa * (0.5 * (D_prev[j+1] + D_prev[j]) + 0.5 * (D_prev[j] + D_prev[j+1])))
+                - u_prev[j+1] * kappa * 0.5 * (D_prev[j+1] + D_prev[j])
+            )
         # for j==jmax, j+1 is outside domain
         # Set u[j+1] to composition outside, assume D is equal to edge of domain
         elif j == usteps - 1:
-            B[j] = (kappa * (-z[j] + z[j-2])
-                    + x_boundary * kappa * (- D_prev[j] + D_prev[j]) # THIS SIMPLIFIES TO ZERO SO THERE IS NO DEPENDENCE ON CONC OUTSIDE THE DOMAIN.
+            B[j] = (
+                - u_prev[j-1] * kappa * 0.5 *(D_prev[j-1] + D_prev[j])
+                - u_prev[j] * (1 - kappa * (D_prev[j] + 0.5 * (D_prev[j-1] + D_prev[j])))
+                - x_boundary * kappa * D_prev[j]
+            )
+        
+        else:
+            B[j] = (
+                - u_prev[j-1] * kappa * 0.5 * (D_prev[j-1] + D_prev[j])
+                - u_prev[j] * (1 - kappa * (0.5 * (D_prev[j+1] + D_prev[j]) + 0.5 * (D_prev[j] + D_prev[j-1])))
+                - u_prev[j+1] * kappa * 0.5 * (D_prev[j+1] + D_prev[j])
+            )
+    
+    return A, B
 
-                    )
 
 
 
+# %%
+u_prev = np.array([0.9]*100)
+T_prev = 1473.0
+x_boundary = 0.8
+kappa = 1000000000000
+
+A, B = construct_linalg_problem(u_prev, T_prev, x_boundary, kappa)
+
+# %%
+B
+
+# %%
+A
+
+# %%
+u = np.linalg.solve(A, B)
+
+# %%
+u
+
+# %%
+np.dot(A, u) - B
+
+# %%
+A
+
+# %%
