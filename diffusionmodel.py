@@ -321,6 +321,13 @@ def run_diffusion_model(alpha, Fe=True, xsteps=100, tsteps=10000):
 
 
 # %%
+xFe54 = run_diffusion_model((54.0/56.0)**beta_Fe)
+
+# %%
+
+# %%
+
+# %%
 tau
 
 # %%
@@ -333,7 +340,7 @@ xres
 fig, ax = plt.subplots()
 
 for i in range(np.shape(xres)[0]):
-    ax.plot(range(np.shape(xres)[1]), xres[i,:])
+    ax.plot(range(np.shape(xres)[1]-75), xres[i,75:])
 
 plt.show()
 
