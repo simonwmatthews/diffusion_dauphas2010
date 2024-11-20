@@ -24,6 +24,7 @@
 # %%
 import numpy as np
 import sympy as sym
+import matplotlib.pyplot as plt
 
 # %% [markdown]
 # ## Fe-Mg isotope geospeedometry in olivine
@@ -59,7 +60,7 @@ XMg0 = 0.94 # Initial Mg concentration, identical for 24 and 26
 def T(t):
     if cooling == 'linear':
         if T0 - t * c / (3600 * 24) > 298.15:
-            return T0 - t * c / (3600 * 24) > 298.15
+            return T0 - t * c / (3600 * 24)
         else:
             return 298.15
     else:
@@ -186,15 +187,21 @@ print("diffusion timescale: {:.4f} d".format(tau / (3600 * 24)))
 #
 
 # %%
-def construct_linalg_problem(u_prev, T_prev, x_boundary, kappa, Fe=True):
+def construct_linalg_problem(u_prev, T_prev, kappa, alpha=1.0, Fe=True):
     """
     Construct the matrices describing the linear algebra problem
     for each time step.
 
+    Note that at the present time the numerical handling of the compositional
+    dependence of D is a fudge, though it likely makes a sufficiently small
+    difference that this isn't a problem.
+
     Parameters
     ----------
     u_prev : numpy.ndarray
-        The concentrations from the previous step
+        The concentrations from the previous step. The last element of 
+        u should represent the constant composition at the domain
+        boundary.
     T_prev : float
         The temperature of the previous step
     x_boundary : float
@@ -202,6 +209,8 @@ def construct_linalg_problem(u_prev, T_prev, x_boundary, kappa, Fe=True):
     kappa : float
         The constant $\frac{\Delta t}{2(\Delta x)^2} where t is time
         and x is distance
+    alpha : float, default: 1.0
+        Adjustment factor for D calculated from beta and isotope mass ratios
     Fe : bool, default: True
         Fe or Mg?
     """
@@ -217,31 +226,21 @@ def construct_linalg_problem(u_prev, T_prev, x_boundary, kappa, Fe=True):
             D_prev[j] = d(T_prev, P, u_prev[j], fo2_prev)
         else:
             D_prev[j] = d(T_prev, P, 1.0 - u_prev[j], fo2_prev)
-
+    D_prev = D_prev * alpha
+    
     for j in range(usteps):
         if j == 0:
-            A[j,j] = - u_prev[j] * (1 + kappa * (0.5 * (D_prev[j] + D_prev[j+1]) + 0.5 * (D_prev[j] + D_prev[j+1])))
+            A[j,j] = - (1 + kappa * (0.5 * (D_prev[j] + D_prev[j+1]) + 0.5 * (D_prev[j] + D_prev[j+1])))
             A[j, j+1] = kappa * 0.5 * (D_prev[j] + D_prev[j+1])*2
+
         elif j == usteps - 1:
-            A[j, j-1] = kappa * 0.5 * (D_prev[j] + D_prev[j-1])
-            A[j, j] = u_prev[j] * (1 + kappa * (D_prev[j]  + 0.5 * (D_prev[j] + D_prev[j-1])))
+            A[j,j] = 1 # The final composition is fixed, and therefore known already
+            
         else:
             A[j, j-1] = kappa * 0.5 * (D_prev[j] + D_prev[j-1])
-            A[j,j] = - u_prev[j] * (1 + kappa * (0.5 * (D_prev[j] + D_prev[j+1]) + 0.5 * (D_prev[j] + D_prev[j-1])))
+            A[j,j] = - (1 + kappa * (0.5 * (D_prev[j] + D_prev[j+1]) + 0.5 * (D_prev[j] + D_prev[j-1])))
             A[j, j+1] = kappa * 0.5 * (D_prev[j] + D_prev[j+1])
 
-
-
-        # if j > 0:
-        #     A[j, j-1] = kappa * (D_prev[j-1] + D_prev[j]) * 0.5
-        #     if j < usteps -1:
-        #         A[j,j] = - (1 + kappa * (0.5 * (D_prev[j+1] + D_prev[j]) + 0.5 * (D_prev[j-1] + D_prev[j])))
-        # if j == 0:
-        #     A[j,j] = - (1 + kappa * (D_prev[j+1] + D_prev[j]))
-        # if j < usteps - 1:
-        #     A[j, j+1] = kappa * 0.5 * (D_prev[j+1] + D_prev[j])
-        # if j == usteps -1:
-        #     A[j,j] = - (1 + kappa * 2 * D_prev[j])
 
     
 
@@ -256,14 +255,9 @@ def construct_linalg_problem(u_prev, T_prev, x_boundary, kappa, Fe=True):
                 - u_prev[j] * (1 - kappa * (0.5 * (D_prev[j+1] + D_prev[j]) + 0.5 * (D_prev[j] + D_prev[j+1])))
                 - u_prev[j+1] * kappa * 0.5 * (D_prev[j+1] + D_prev[j])
             )
-        # for j==jmax, j+1 is outside domain
-        # Set u[j+1] to composition outside, assume D is equal to edge of domain
+
         elif j == usteps - 1:
-            B[j] = (
-                - u_prev[j-1] * kappa * 0.5 *(D_prev[j-1] + D_prev[j])
-                - u_prev[j] * (1 - kappa * (D_prev[j] + 0.5 * (D_prev[j-1] + D_prev[j])))
-                - x_boundary * kappa * D_prev[j]
-            )
+            B[j] = u_prev[j]
         
         else:
             B[j] = (
@@ -278,12 +272,82 @@ def construct_linalg_problem(u_prev, T_prev, x_boundary, kappa, Fe=True):
 
 
 # %%
-u_prev = np.array([0.9]*100)
+def run_diffusion_model(alpha, Fe=True, xsteps=100, tsteps=10000):
+    """
+
+    Note that many of the parameters are being set by global variables.
+    While this is not great python practice, it stays true to the format
+    of the original Mathematica script this code is emulating.
+
+    Parameters
+    ----------
+    alpha : float, default: 1.0
+        Adjustment factor for D calculated from beta and isotope mass ratios
+    Fe : bool, default: True
+        Fe or Mg?
+    """
+
+    if Fe:
+        X0 = XFe0
+        X1 = XFe1
+    else:
+        X0 = XMg0
+        X1 = XMg1
+
+    # Set up starting arrays:
+    u0 = np.array([X0]*(xsteps-1) + [X1])
+    time = np.linspace(0, 3*tau, tsteps+1)
+
+    x_results = np.zeros([tsteps+1, xsteps])
+    x_results[0,:] = u0
+
+    Tt = np.zeros(tsteps+1)
+    for i in range(tsteps):
+        Tt[i] = T(time[i])
+        
+    u_prev = u0
+
+    kappa = (time[1] - time[0]) / (2 * (a / (xsteps-1))**2)
+    print(np.log10(kappa))
+
+    for i in range(tsteps):
+        i+=1 # Run from i=1 to tsteps+1
+        A, B = construct_linalg_problem(u_prev, Tt[i-1], kappa, alpha=alpha, Fe=Fe)
+        u = np.linalg.solve(A, B)
+        x_results[i,:] = u
+        u_prev = u
+    
+    return x_results
+
+
+# %%
+tau
+
+# %%
+xres = run_diffusion_model(1.0)
+
+# %%
+xres
+
+# %%
+fig, ax = plt.subplots()
+
+for i in range(np.shape(xres)[0]):
+    ax.plot(range(np.shape(xres)[1]), xres[i,:])
+
+plt.show()
+
+# %%
+
 T_prev = 1473.0
 x_boundary = 0.8
-kappa = 1000000000000
+x_internal = 0.9
+kappa = 1e12
 
-A, B = construct_linalg_problem(u_prev, T_prev, x_boundary, kappa)
+u_prev = np.array([x_internal]*100)
+u_prev[-1] = x_boundary
+
+A, B = construct_linalg_problem(u_prev, T_prev, kappa)
 
 # %%
 B
