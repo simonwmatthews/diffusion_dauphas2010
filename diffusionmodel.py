@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # ---
 # jupyter:
 #   jupytext:
@@ -134,6 +135,8 @@ print("diffusion timescale: {:.4f} d".format(tau / (3600 * 24)))
 # $\frac{\partial X(t, r=0)}{\partial r} = 0 $
 
 # %% [markdown]
+# ## For 1D diffusion
+#
 # The equations required for Crank Nicholson scheme:
 #
 # If $D$ were constant:
@@ -152,24 +155,49 @@ print("diffusion timescale: {:.4f} d".format(tau / (3600 * 24)))
 # $ D_{j+1/2} = \frac{1}{2} \left[ D(u^{n}_{j+1}) + D(u^n_j) \right] $
 
 # %% [markdown]
-# Maybe a time dependence for $D$ can be incorporated:
+# This can be rearranged, setting:
 #
-# $ \frac{u_j^{n+1} - u_j^n}{\Delta t} = \frac{1}{2} \left[ \frac{D_{j+1/2}^{n+1} \left( u^{n+1}_{j+1} - u_j^{n+1} \right) + D_{j+1/2}^{n} \left( u^{n}_{j+1} - u_j^{n} \right) - D_{j-1/2}^{n+1} \left( u_j^{n+1} - u^{n+1}_{j-1} \right) - D_{j-1/2}^{n} \left( u_j^{n} - u^{n}_{j-1} \right)}{\left(\Delta x \right)^2} \right]$ 
+# $ \kappa = \frac{\Delta t}{2(\Delta x)^2} $
 #
-# where,
+# then:
 #
-# $D_{j+1/2}^n = \frac{1}{2} \left[ D(u^{n}_{j+1}) + D(u^n_j) \right] ; \, \, \, D_{j-1/2}^n = \frac{1}{2} \left[ D(u^{n}_{j}) + D(u^n_{j-1}) \right]$
+# $ u^{n+1}_{j-1} \left( \kappa D^{n+1}_{j-1/2} \right) - u_j^{n+1} \left( 1 + \kappa \left[ D^{n+1}_{j+1/2} + D^{n+1}_{j-1/2} \right] \right) + \kappa u^{n+1}_{j+1} D^{n+1}_{j+1/2}$
 #
+# $ =  - u_{j-1}^n \left( \kappa D_{j-1/2}^n \right) - u_j^n \left( 1 - \kappa \left[ D^n_{j+1/2} + D^n_{j-1/2} \right] \right) - \kappa u^n_{j+1} D^n_{j+1/2}$
 #
-# $D_{j+1/2}^{n+1} = \frac{1}{2} \left[ D(u^{n+1}_{j+1}) + D(u^{n+1}_j) \right] ; \, \, \, D_{j-1/2}^{n+1} = \frac{1}{2} \left[ D(u^{n+1}_{j}) + D(u^{n+1}_{j-1}) \right] $
+# which can be set up as a set of linear equations:
 #
-# $D(u^{n+1}_{j}) = D(u^n_j) + (u_j^{n+1} - u_j^n) \, \, \frac{\partial D}{\partial u} \Bigr|_{j,n} $
+# For each time step $n$:
 #
-# $D(u^{n+1}_{j+1}) = D(u^n_{j+1}) + (u_{j+1}^{n+1} - u_{j+1}^n) \, \, \frac{\partial D}{\partial u} \Bigr|_{j+1,n}$
+# $
+# \begin{bmatrix}
+#  -(1 + \kappa (D_{1+1/2}^{n+1} + D_{1 - 1/2}^{n+1})) & \kappa D^{n+1}_{1+1/2} & 0 & ...\\
+# \kappa D_{2 - 1/2}^{n+1} & - (1 + \kappa (D_{2+1/2}^{n+1} + D_{2 - 1/2}^{n+1})) & \kappa D^{n+1}_{2 - 1/2} & ... \\
+# ... & ... & ... & ... 
+# \end{bmatrix}
+# \begin{bmatrix}
+# u_1^{n+1} \\ u_2^{n+1} \\ ...
+# \end{bmatrix}
+# =\begin{bmatrix}
+#  -u_1^{n-1} \kappa (D_{1/2}^{n-1}) - u_0^{n-1} ( 1 - \kappa (D^n_{j+1/2} + D^n_{j-1/2})) - u^{n-1}_{1} \kappa D^n_{0+1/2} \\ 
+#  -u_0^{n-1} \kappa D_{1 - 1/2}^{n-1} - u_1 (1 - \kappa (D_{1+1/2}^{n-1} + D_{1-1/2}^{n-1})) - u_2^{n-1} \kappa D_{1+1/2}^{n-1} \\ 
+#  ...
+# \end{bmatrix}
+# $
 #
-# $ D(u^{n+1}_{j-1}) = D(u^n_{j-1}) + (u_{j-1}^{n+1} - u_j^n) \, \, \frac{\partial D}{\partial u} \Bigr|_{j-1,n} $
+# Where the first term on the RHS reflects the symmetric boundary condition
 
 # %% [markdown]
+# ## For diffusion with spherical symmetry
+#
+# - Multiply $u_j^{n+1}$ and $u_n^n$ by $r_j^2$
+# - Multiply $D_{j+1/2}^{n+1}$ and $D_{j-1/2}^{n+1}$ by $r_j^2$ (Or the appropriate $j$ values inside the brackets)
+#
+
+# %% [markdown]
+#
+# ## Older notes- need sorting
+#
 # This needs to be rearranged such that it has the format of a set of simultaneous linear equations at each time step $n$, solving for the step $n+1$:
 #
 #
@@ -184,10 +212,10 @@ print("diffusion timescale: {:.4f} d".format(tau / (3600 * 24)))
 # The D[...] operator is a partial derivative.
 
 # %% [markdown]
-#
+# ## Code for running 1D calculations
 
 # %%
-def construct_linalg_problem(u_prev, T_prev, kappa, alpha=1.0, Fe=True):
+def construct_linalg_problem_1d(u_prev, T_prev, kappa, alpha=1.0, Fe=True):
     """
     Construct the matrices describing the linear algebra problem
     for each time step.
@@ -272,7 +300,7 @@ def construct_linalg_problem(u_prev, T_prev, kappa, alpha=1.0, Fe=True):
 
 
 # %%
-def run_diffusion_model(alpha, Fe=True, xsteps=100, tsteps=10000):
+def run_diffusion_model_1d(alpha, Fe=True, xsteps=100, tsteps=10000):
     """
 
     Note that many of the parameters are being set by global variables.
@@ -321,7 +349,10 @@ def run_diffusion_model(alpha, Fe=True, xsteps=100, tsteps=10000):
 
 
 # %%
-xFe54 = run_diffusion_model((54.0/56.0)**beta_Fe)
+xFe54 = run_diffusion_model_1d((54.0/56.0)**beta_Fe)
+
+# %% [markdown]
+# ## Code for running 3D calculations
 
 # %%
 
@@ -371,4 +402,23 @@ u
 # %%
 A
 
-# %%
+# %% [markdown]
+# Maybe a time dependence for $D$ can be incorporated:
+#
+# $ \frac{u_j^{n+1} - u_j^n}{\Delta t} = \frac{1}{2} \left[ \frac{D_{j+1/2}^{n+1} \left( u^{n+1}_{j+1} - u_j^{n+1} \right) + D_{j+1/2}^{n} \left( u^{n}_{j+1} - u_j^{n} \right) - D_{j-1/2}^{n+1} \left( u_j^{n+1} - u^{n+1}_{j-1} \right) - D_{j-1/2}^{n} \left( u_j^{n} - u^{n}_{j-1} \right)}{\left(\Delta x \right)^2} \right]$ 
+#
+# where,
+#
+# $D_{j+1/2}^n = \frac{1}{2} \left[ D(u^{n}_{j+1}) + D(u^n_j) \right] ; \, \, \, D_{j-1/2}^n = \frac{1}{2} \left[ D(u^{n}_{j}) + D(u^n_{j-1}) \right]$
+#
+#
+# $D_{j+1/2}^{n+1} = \frac{1}{2} \left[ D(u^{n+1}_{j+1}) + D(u^{n+1}_j) \right] ; \, \, \, D_{j-1/2}^{n+1} = \frac{1}{2} \left[ D(u^{n+1}_{j}) + D(u^{n+1}_{j-1}) \right] $
+#
+# $D(u^{n+1}_{j}) = D(u^n_j) + (u_j^{n+1} - u_j^n) \, \, \frac{\partial D}{\partial u} \Bigr|_{j,n} $
+#
+# $D(u^{n+1}_{j+1}) = D(u^n_{j+1}) + (u_{j+1}^{n+1} - u_{j+1}^n) \, \, \frac{\partial D}{\partial u} \Bigr|_{j+1,n}$
+#
+# $ D(u^{n+1}_{j-1}) = D(u^n_{j-1}) + (u_{j-1}^{n+1} - u_j^n) \, \, \frac{\partial D}{\partial u} \Bigr|_{j-1,n} $
+
+# %% [markdown]
+#
