@@ -7,6 +7,7 @@ University of Iceland
 """
 
 import numpy as np
+from scipy import integrate
 
 R = 8.314472
 
@@ -74,7 +75,7 @@ class TevolutionLinearDauphas2010:
     T0 : float
         The initial temperature in K
     c : float
-        The cooling parameter in Kd-1.
+        The cooling parameter in K d-1.
     """
     def __init__(self, T0, c):
         self.T0 = T0
@@ -353,7 +354,7 @@ def run_diffusion_model(X0, X1, a, alpha, D, T, P, fO2, Fe=True, n_tau_end=3, xs
         tau = a**2 / D(T(0), P, X0, fO2(T(0),P))
     else:
         tau = a**2 / D(T(0), P, 1.0-X0, fO2(T(0),P))
-    print(f'Diffusion Timescale: {tau/3600/24:.4f} days')
+    # print(f'Diffusion Timescale: {tau/3600/24:.4f} days')
 
     # Set up starting arrays:
     u0 = np.array([X0]*(xsteps-1) + [X1])
@@ -379,6 +380,167 @@ def run_diffusion_model(X0, X1, a, alpha, D, T, P, fO2, Fe=True, n_tau_end=3, xs
     
     return x_results
 
+# === Calculate bulk isotope ratios ================================================
+
+def calc_bulk_delta(delta, r, conc):
+    """
+    Calculate the bulk isotope ratio of the olivine
+    crystal
+
+    Parameters
+    ----------
+    delta : np.array
+        2D array of delta isotope ratios, first axis time
+    r : np.array
+        the values of the radius corresponding to the second
+        axis of delta
+    conc : np.array
+        The concentration of the element corresponding to each 
+        delta value
+    
+    Returns
+    -------
+    np.array
+        1D array of the bulk delta values over time
+    """
+
+    top = integrate.trapezoid(delta * conc * r**2, r)
+    bottom = integrate.trapezoid(conc * r**2, r)
+
+    return top / bottom
+
+
+
 # === Provide a complete wrapper around the model ===================================
 
 
+def run_dauphas_model(XMg0=0.94, XMg1=0.89, a=300e-6, 
+                      beta_Fe=0.05, beta_Mg=0.05, T0=1853.0, c=30.0, 
+                      Tlinear=True, P=1e5, Delta_fO2=0.0, 
+                      n_tau_end=3.0, xsteps=100, tsteps=10000,
+                      print_updates=True):
+    """
+    Run a complete set of diffusion models in the format set up by
+    Dauphas et al. (2010) needed to calculate the fractionation in
+    both Mg and Fe isotopes.
+
+    Parameters
+    ----------
+    XMg0 : float, default: 0.94
+        The mole fraction of Mg in the crystal at the start.
+    XMg1 : float, default: 0.89
+        The mole fraction of Mg at the edge of the crystal througout
+        the model run.
+    a : float, default: 300e-6
+        The crystal radius in m
+    beta_Fe : float, default: 0.05
+        The beta value relating the diffusivities of 56Fe and 54Fe
+    beta_Mg : float, default: 0.05
+        The beta value relating the diffusivities of 26Mg and 24Mg
+    T0 : float, default: 1853.0
+        The starting temperature in K
+    c : float, default: 30.0
+        The time constant for cooling, K d-1 if linear, d-1 if 
+        exponential
+    Tlinear : bool, default: True
+        Use linear or exponential cooling
+    P : float, default: 1e5
+        Pressure in Pa
+    Delta_fO2 : float, default: 0.0
+        The log(fO2) relative to NNO
+    n_tau_end : float, default: 3.0
+        The length of the simulation (in multiples of the diffusive
+        timescale)
+    xsteps : int, default: 100
+        The number of spatial steps
+    tsteps : int, default: 10000
+        The number of time steps
+    print_updates : bool, default: True
+        Print status updates, or not?
+    
+    Returns
+    -------
+    dict
+        Results are returned in dictionary with entries:
+        - 'Fo': The olivine Fo content
+        - 'dFe': delta 56Fe
+        - 'dMg': delta 26Mg
+        - 'tau': diffusive time constant in days
+        - 'T': temperature over time, in K
+        - 't': time in days
+        - 'r': distance from crystal centre in um
+        - 'bulk_dFe': bulk dFe values over time
+        ' 'bulk_dMg': bulk dMg values over time
+    """
+
+    if print_updates: print("Let's model some Mg-Fe diffusion in olivine!"
+                            "\n============================================"
+                            "\n\nThis routine recreates the model outlined"
+                            "\nby Dauphas et al. (2010)\n")
+
+
+    # First, prepare variables. This includes variables not
+    # directly needed for calculations, but will be returned
+    # to the user for plotting convenience.
+
+    XFe0 = 1 - XMg0
+    XFe1 = 1 - XMg1
+
+    r = np.linspace(0, a, xsteps)
+    alpha_Fe = (54.0/56.0)**beta_Fe
+    alpha_Mg = (24.0/26.0)**beta_Mg
+
+    fO2 = fO2Dauphas2010(DeltafO2=Delta_fO2)
+
+    if Tlinear:
+        T = TevolutionLinearDauphas2010(T0=T0, c=c)
+    else:
+        T = TevolutionExponentialDauphas2010(T0=T0, c=c)
+    
+    D = DvariableDauphas2010()
+    
+    tau = tau = a**2 / D(T(0), P, XFe0, fO2(T(0),P))
+
+    if print_updates: print(f'Diffusive timescale: {tau/3600/24:.2f} days')
+
+    times = np.linspace(0, tau*n_tau_end, tsteps+1)
+    temperatures = np.zeros(np.shape(times))
+    for i in range(len(times)):
+        temperatures[i] = T(times[i])
+
+    if print_updates: print("Starting 54Fe...")
+    x54Fe = run_diffusion_model(XFe0, XFe1, a, 1.0, D, T, P, fO2, Fe=True, 
+                                n_tau_end=n_tau_end, xsteps=xsteps, tsteps=tsteps)
+    if print_updates: print("Finished 54Fe! Starting 56Fe...")
+
+    x56Fe = run_diffusion_model(XFe0, XFe1, a, alpha_Fe, D, T, P, fO2, Fe=True, 
+                                n_tau_end=n_tau_end, xsteps=xsteps, tsteps=tsteps)
+    if print_updates: print("Finished 56Fe! Starting 24Mg...")
+    
+    x24Mg = run_diffusion_model(XMg0, XMg1, a, 1.0, D, T, P, fO2, Fe=False, 
+                                n_tau_end=n_tau_end, xsteps=xsteps, tsteps=tsteps)
+    if print_updates: print("Finished 24Mg! Starting 26Mg...")
+
+    x26Mg = run_diffusion_model(XMg0, XMg1, a, alpha_Mg, D, T, P, fO2, Fe=False, 
+                                n_tau_end=n_tau_end, xsteps=xsteps, tsteps=tsteps)
+    if print_updates: print("Finished 26Mg! All done.")
+    
+    dFe = (x56Fe/x54Fe - 1) * 1000
+    dMg = (x26Mg/x24Mg - 1) * 1000
+
+    bulk_dFe = calc_bulk_delta(dFe, r, x54Fe)
+    bulk_dMg = calc_bulk_delta(dMg, r, x24Mg)
+
+    results = {
+        'Fo': x24Mg*100,
+        'dFe': dFe,
+        'dMg': dMg,
+        'tau': tau / 3600 / 24,
+        'T': temperatures,
+        't': times / 3600 / 24,
+        'r': r*1e6,
+        'bulk_dFe': bulk_dFe,
+        'bulk_dMg': bulk_dMg,
+    }
+
+    return results
